@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spotify button test</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;background:#111;color:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;padding:24px 18px}
+  h1{font-size:20px;margin:0 0 6px}
+  p{color:#aaa;font-size:14px;margin:0 0 18px;line-height:1.4}
+  a.btn{display:block;background:#1DB954;color:#111;text-decoration:none;font-weight:700;padding:16px;border-radius:14px;margin:0 0 14px;font-size:17px;text-align:center}
+  a.btn small{display:block;font-weight:500;font-size:12px;opacity:.75;margin-top:3px}
+  code{color:#888;font-size:12px;word-break:break-all}
+</style>
+</head>
+<body>
+  <h1>Which button opens the Spotify app?</h1>
+  <p>Open this page from an Instagram DM. Tap a button, note what happens, come back to Instagram, and tap the next one.</p>
+  <a class="btn" href="spotify:track:5lRfv9ZuZTer2lP720t81X">1<small>app link</small></a>
+  <a class="btn" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X">2<small>normal Spotify link</small></a>
+  <a class="btn" id="b3" href="#">3<small>app link, started by script</small></a>
+  <a class="btn" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X?go=1" target="_blank" rel="noopener">4<small>normal link, new window</small></a>
+  <p>For each one, tell Claude: <b>app</b> (Spotify app opened), <b>web</b> (a Spotify web page loaded inside Instagram), <b>popup</b> (asked to open Spotify), or <b>nothing</b>.</p>
+  <p><code id="ua"></code></p>
+<script>
+  document.getElementById('b3').addEventListener('click', function (e) { e.preventDefault(); location.href = 'spotify:track:5lRfv9ZuZTer2lP720t81X'; });
+  document.getElementById('ua').textContent = navigator.userAgent;
+</script>
+</body>
+</html>
