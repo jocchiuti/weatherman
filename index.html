@@ -10,11 +10,9 @@
 <!--
   Flat Out round-2 Spotify page (v2, Nov 2026).
     1. Loads the Meta pixel ("Flat Out site") and fires PageView.
-    2. "Listen on Spotify" fires ViewContent (what the ad optimizes for), then opens the Spotify APP
-       from the tap itself: spotify: URI on iPhone (with a web fallback if the app doesn't open),
-       an Android intent with a built-in browser fallback, and the normal web link elsewhere.
-       v1 waited 250 ms and redirected to open.spotify.com, which inside Instagram's browser opens
-       the logged-out web player instead of the app.
+    2. "Listen on Spotify" is a plain open.spotify.com link. Tapping it fires ViewContent (what the ad
+       optimizes for) and the phone opens the Spotify app itself. v1 redirected by script after 250 ms and
+       v2 used spotify: links; inside Instagram's browser both fail to open the app.
 -->
 <script>
   var PIXEL_ID = "1359317799389836";
@@ -45,7 +43,7 @@
   <p>Flat Out</p>
   <a class="btn" id="spotify" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X">Listen on Spotify</a>
   <div class="follow">Like it? Follow <a id="artist" href="https://open.spotify.com/artist/5YkwretAI76aIwY8Inrtyr">Flat Out on Spotify</a> so our next song lands in your Release Radar.</div>
-  <small>Opens the Spotify app. App didn't open? <a id="web" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X">Play in your browser</a>.</small>
+  <small>Opens in Spotify.</small>
 </main>
 <script>
   // Meta pixel base code (official snippet)
@@ -55,48 +53,20 @@
   fbq('init', PIXEL_ID);
   fbq('track', 'PageView');
 
-  var ua = navigator.userAgent || "";
-  var isAndroid = /Android/i.test(ua);
-  var isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-  function track(kind) {
-    try { fbq('track', 'ViewContent', { content_name: 'The Weatherman', content_category: kind }); } catch (e) {}
+  // The buttons are plain open.spotify.com links and the browser follows them itself. Tested Nov 13 inside
+  // Instagram's iPhone browser: a link the person taps opens the Spotify app and plays; spotify: links and
+  // script-started redirects show "problem loading". So nothing here may block or delay the tap; we only
+  // report it to Meta on the way out (finger down, or click for keyboard/mouse), once per button.
+  function report(el, send) {
+    var done = false;
+    function fire() { if (!done) { done = true; try { send(); } catch (e) {} } }
+    el.addEventListener('pointerdown', fire);
+    el.addEventListener('click', fire);
   }
-
-  // Everything below runs inside the tap handler itself, so iOS and Android treat it as the user's own action.
-  function openInApp(path, webUrl) {
-    if (isAndroid) {
-      // Android: the intent opens the Spotify app, or falls back to the web link if it isn't installed.
-      location.href = "intent://" + path + "#Intent;scheme=spotify;package=com.spotify.music;S.browser_fallback_url=" +
-        encodeURIComponent(webUrl) + ";end";
-      return;
-    }
-    if (isIOS) {
-      // iPhone: try the app; if this page is still showing after a moment, the app didn't open, so use the web link.
-      var left = false;
-      function gone() { left = true; }
-      document.addEventListener("visibilitychange", function () { if (document.hidden) gone(); }, { once: true });
-      window.addEventListener("pagehide", gone, { once: true });
-      window.addEventListener("blur", gone, { once: true });
-      location.href = "spotify:" + path.replace(/\//g, ":");
-      setTimeout(function () { if (!left && !document.hidden) location.href = webUrl; }, 2500);
-      return;
-    }
-    // Desktop and everything else: the normal web link (give the pixel a moment first).
-    setTimeout(function () { location.href = webUrl; }, 300);
-  }
-
-  document.getElementById("spotify").addEventListener("click", function (e) {
-    e.preventDefault();
-    track("spotify");
-    openInApp("track/" + TRACK_ID, WEB_URL);
+  report(document.getElementById('spotify'), function () {
+    fbq('track', 'ViewContent', { content_name: 'The Weatherman', content_category: 'spotify' });
   });
-  document.getElementById("artist").addEventListener("click", function (e) {
-    e.preventDefault();
-    try { fbq('trackCustom', 'SpotifyFollowTap'); } catch (err) {}
-    openInApp("artist/5YkwretAI76aIwY8Inrtyr", ARTIST_URL);
-  });
-  document.getElementById("web").addEventListener("click", function () { track("spotify_web"); });
+  report(document.getElementById('artist'), function () { fbq('trackCustom', 'SpotifyFollowTap'); });
 </script>
 <noscript><img height="1" width="1" style="display:none" alt="" src="https://www.facebook.com/tr?id=1359317799389836&ev=PageView&noscript=1"></noscript>
 </body>
