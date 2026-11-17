@@ -8,20 +8,29 @@
 <meta property="og:title" content="The Weatherman — Flat Out">
 <meta property="og:image" content="weatherman-cover.jpg">
 <!--
-  Flat Out round-2 Spotify page (v2, Nov 2026).
-    1. Loads the Meta pixel ("Flat Out site") and fires PageView.
-    2. "Listen on Spotify" is a plain open.spotify.com link. Tapping it fires ViewContent (what the ad
-       optimizes for) and the phone opens the Spotify app itself. v1 redirected by script after 250 ms and
-       v2 used spotify: links; inside Instagram's browser both fail to open the app.
+  Flat Out Spotify page (v4, Nov 2026).
+    1. Meta pixel ("Flat Out site"): PageView on load, ViewContent on finger-down on "Listen on Spotify"
+       (the event the ads optimize for; unchanged since v3).
+    2. "Listen on Spotify" stays a plain open.spotify.com link that the browser follows itself. Tested Nov 13 in
+       Instagram's iPhone browser: only a link the person taps opens the Spotify app (spotify: links and script
+       redirects show "problem loading"). Nothing here may block, delay or redirect that tap.
+    3. New in v4:
+       - Handoff check: after a tap, the page reports whether it went into the background (the Spotify app opened),
+         or was still showing 3 seconds later (nothing happened), as pixel custom events named by phone type and
+         link version, e.g. HandoffTap_android_plain, HandoffApp_android_plain, HandoffNone_android_plain.
+         Taps that open Spotify's website inside Instagram show up as Tap with neither App nor None.
+       - Android inside Instagram/Facebook: half of visitors (picked at random, remembered on the phone) get an
+         Android "intent" version of the same link, which asks Android to open it in the Spotify app, plus a small
+         "open it in the browser" fallback. iPhones and everything else keep exactly the v3 link.
+       - "Tap + to save it" under the button; the follow ask moved to after the listen: when someone comes back
+         from Spotify after 20+ seconds, the big button becomes "Follow us on Spotify".
+    Add ?debug=1 to the address to see the events on the page; in debug mode nothing is sent to Meta. With debug
+    on, &os=android&iab=ig pretends to be Android inside Instagram and &returned=1 shows the after-listen state
+    (layout checks only; they don't change what a phone really does).
 -->
-<script>
-  var PIXEL_ID = "1359317799389836";
-  var TRACK_ID = "5lRfv9ZuZTer2lP720t81X";
-  var WEB_URL = "https://open.spotify.com/track/" + TRACK_ID;
-  var ARTIST_URL = "https://open.spotify.com/artist/5YkwretAI76aIwY8Inrtyr";
-</script>
 <style>
   :root{color-scheme:dark}
+  [hidden]{display:none !important}
   body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center}
   main{padding:32px 20px;max-width:420px}
   .art{width:220px;height:220px;border-radius:14px;background:#222;margin:0 auto 18px;overflow:hidden}
@@ -30,10 +39,12 @@
   p{color:#aaa;margin:0 0 22px}
   a.btn{display:block;background:#1DB954;color:#111;text-decoration:none;font-weight:700;padding:15px 18px;border-radius:999px;margin:0 0 14px;font-size:17px}
   a.btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
-  .follow{color:#bbb;font-size:14px;line-height:1.45;margin:0 0 14px}
-  .follow a{color:#1DB954}
-  small{color:#666;font-size:12px}
+  .returned #spotify{background:transparent;color:#1DB954;border:2px solid #1DB954;padding:13px 16px}
+  .why{color:#bbb;font-size:14px;line-height:1.45;margin:-4px 0 16px}
+  small{display:block;color:#888;font-size:13px;line-height:1.45}
   small a{color:#888}
+  #fallback{margin-top:12px}
+  #debuglog{font:11px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;color:#9f9;margin-top:24px}
 </style>
 </head>
 <body>
@@ -41,22 +52,60 @@
   <div class="art"><img src="weatherman-cover.jpg" alt="The Weatherman cover art" width="220" height="220"></div>
   <h1>The Weatherman</h1>
   <p>Flat Out</p>
+  <a class="btn" id="followBig" href="https://open.spotify.com/artist/5YkwretAI76aIwY8Inrtyr" hidden>Follow us on Spotify</a>
+  <div class="why" id="followWhy" hidden>Followers get our next song in their Release Radar.</div>
   <a class="btn" id="spotify" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X">Listen on Spotify</a>
-  <div class="follow">Like it? Follow <a id="artist" href="https://open.spotify.com/artist/5YkwretAI76aIwY8Inrtyr">Flat Out on Spotify</a> so our next song lands in your Release Radar.</div>
-  <small>Opens in Spotify.</small>
+  <small id="hint">Opens the Spotify app. Like it? Tap ＋ to save it.</small>
+  <small id="fallback" hidden><a id="webfallback" href="https://open.spotify.com/track/5lRfv9ZuZTer2lP720t81X">Spotify didn't open? Open it in the browser</a></small>
 </main>
+<script>
+  // Runs before the visitor can tap: decide which version of the link this phone gets.
+  (function () {
+    var TRACK = 'track/5lRfv9ZuZTer2lP720t81X', ARTIST = 'artist/5YkwretAI76aIwY8Inrtyr';
+    var q = location.search, DEBUG = /[?&]debug=1/.test(q);
+    var ua = navigator.userAgent || '';
+    var os = /Android/i.test(ua) ? 'android' : (/iPhone|iPad|iPod/i.test(ua) ? 'ios' : 'other');
+    var iab = /Instagram/i.test(ua) ? 'ig' : (/FBAN|FBAV|FB_IAB/i.test(ua) ? 'fb' : 'none');
+    if (DEBUG) {                                   // checking only: nothing is sent to Meta in debug mode
+      window.fbq = function () { (window.__fbqlog = window.__fbqlog || []).push([].slice.call(arguments)); };
+      var mo = q.match(/[?&]os=(\w+)/), mi = q.match(/[?&]iab=(\w+)/);
+      if (mo) os = mo[1];
+      if (mi) iab = mi[1];
+    }
+    var variant = 'plain';
+    function intentFor(path) {
+      return 'intent://open.spotify.com/' + path + '#Intent;scheme=https;S.browser_fallback_url=' +
+             encodeURIComponent('https://open.spotify.com/' + path) + ';end';
+    }
+    try {
+      if (os === 'android' && iab !== 'none') {
+        var arm = null;
+        try { arm = localStorage.getItem('wm_arm'); } catch (e) {}
+        if (arm !== 'plain' && arm !== 'intent') {
+          arm = Math.random() < 0.5 ? 'plain' : 'intent';
+          try { localStorage.setItem('wm_arm', arm); } catch (e) {}
+        }
+        variant = arm;
+        if (arm === 'intent') {
+          document.getElementById('spotify').href = intentFor(TRACK);
+          document.getElementById('followBig').href = intentFor(ARTIST);
+          document.getElementById('fallback').hidden = false;
+        }
+      }
+    } catch (e) { variant = 'plain'; }
+    window.WM = { os: os, iab: iab, variant: variant, debug: DEBUG };
+  })();
+</script>
 <script>
   // Meta pixel base code (official snippet)
   !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
   if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;
   s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', PIXEL_ID);
+  fbq('init', '1359317799389836');
   fbq('track', 'PageView');
 
-  // The buttons are plain open.spotify.com links and the browser follows them itself. Tested Nov 13 inside
-  // Instagram's iPhone browser: a link the person taps opens the Spotify app and plays; spotify: links and
-  // script-started redirects show "problem loading". So nothing here may block or delay the tap; we only
-  // report it to Meta on the way out (finger down, or click for keyboard/mouse), once per button.
+  // Report the tap to Meta on the way out (finger down, or click for keyboard/mouse), once per button.
+  // Unchanged from v3: this is the event the ads optimize for.
   function report(el, send) {
     var done = false;
     function fire() { if (!done) { done = true; try { send(); } catch (e) {} } }
@@ -66,7 +115,59 @@
   report(document.getElementById('spotify'), function () {
     fbq('track', 'ViewContent', { content_name: 'The Weatherman', content_category: 'spotify' });
   });
-  report(document.getElementById('artist'), function () { fbq('trackCustom', 'SpotifyFollowTap'); });
+  report(document.getElementById('followBig'), function () { fbq('trackCustom', 'SpotifyFollowTap'); });
+</script>
+<script>
+  // Handoff check. Only listens; never touches the tap itself.
+  (function () {
+    var W = window.WM || { os: 'other', iab: 'none', variant: 'plain', debug: false };
+    var tapAt = 0, which = '', outcome = null, timer = null, returned = false, log = null;
+    if (W.debug) {
+      log = document.createElement('div'); log.id = 'debuglog';
+      document.querySelector('main').appendChild(log);
+      log.textContent = navigator.userAgent + '\n' + JSON.stringify(W) + '\n';
+    }
+    function ev(kind, extra) {
+      var name = kind + '_' + W.os + '_' + W.variant;          // e.g. HandoffApp_android_intent
+      var p = { link: which, iab: W.iab };
+      for (var k in extra) p[k] = extra[k];
+      if (log) log.textContent += new Date().toLocaleTimeString() + '  ' + name + ' ' + JSON.stringify(p) + '\n';
+      try { fbq('trackCustom', name, p); } catch (e) {}
+    }
+    function onTap(e) {
+      which = e.currentTarget.id; tapAt = Date.now(); outcome = null; returned = false;
+      ev('HandoffTap', {});
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (!outcome && document.visibilityState === 'visible') { outcome = 'none'; ev('HandoffNone', { ms: 3000 }); }
+      }, 3000);
+    }
+    ['spotify', 'followBig', 'webfallback'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('click', onTap);
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!tapAt) return;
+      var ms = Date.now() - tapAt;
+      if (document.visibilityState === 'hidden') {
+        if (!outcome && ms < 10000) { outcome = 'app'; ev('HandoffApp', { ms: ms }); }
+        else if (outcome === 'none' && ms < 30000) { outcome = 'app'; ev('HandoffAppLate', { ms: ms }); }
+      } else if (outcome === 'app' && !returned) {
+        returned = true;
+        ev('Returned', { away_s: Math.round(ms / 1000) });
+        if (ms > 20000 && which === 'spotify') showFollow();
+      }
+    });
+    function showFollow() {
+      if (document.body.classList.contains('returned')) return;
+      document.body.classList.add('returned');
+      document.getElementById('followBig').hidden = false;
+      document.getElementById('followWhy').hidden = false;
+      document.getElementById('spotify').textContent = '▶ Play it again';
+      document.getElementById('hint').hidden = true;
+    }
+    if (W.debug && /[?&]returned=1/.test(location.search)) showFollow();   // layout check only
+  })();
 </script>
 <noscript><img height="1" width="1" style="display:none" alt="" src="https://www.facebook.com/tr?id=1359317799389836&ev=PageView&noscript=1"></noscript>
 </body>
