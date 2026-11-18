@@ -19,9 +19,10 @@
          or was still showing 3 seconds later (nothing happened), as pixel custom events named by phone type and
          link version, e.g. HandoffTap_android_plain, HandoffApp_android_plain, HandoffNone_android_plain.
          Taps that open Spotify's website inside Instagram show up as Tap with neither App nor None.
-       - Android inside Instagram/Facebook: half of visitors (picked at random, remembered on the phone) get an
-         Android "intent" version of the same link, which asks Android to open it in the Spotify app, plus a small
-         "open it in the browser" fallback. iPhones and everything else keep exactly the v3 link.
+       - Android inside Instagram/Facebook gets an Android "intent" version of the same link, which asks Android to
+         open it in the Spotify app, plus a small "open it in the browser" fallback (since Nov 18; Nov 17-18 it was a
+         50/50 test against the plain link, which kept people inside Instagram). iPhones and everything else keep
+         exactly the v3 link. HandoffWeb = the tap loaded a page inside Instagram instead of opening the app.
        - "Tap + to save it" under the button; the follow ask moved to after the listen: when someone comes back
          from Spotify after 20+ seconds, the big button becomes "Follow us on Spotify".
     Add ?debug=1 to the address to see the events on the page; in debug mode nothing is sent to Meta. With debug
@@ -79,12 +80,10 @@
     }
     try {
       if (os === 'android' && iab !== 'none') {
-        var arm = null;
-        try { arm = localStorage.getItem('wm_arm'); } catch (e) {}
-        if (arm !== 'plain' && arm !== 'intent') {
-          arm = Math.random() < 0.5 ? 'plain' : 'intent';
-          try { localStorage.setItem('wm_arm', arm); } catch (e) {}
-        }
+        // Nov 13-18 split test: with the plain link, 0 of 12 Android visitors ever came back to this page
+        // (the link loaded Spotify's website inside Instagram); with the intent link 8 of 11 did, like iPhone
+        // (64 of 96). So every Android visitor inside Instagram/Facebook now gets the intent link.
+        var arm = 'intent';
         variant = arm;
         if (arm === 'intent') {
           document.getElementById('spotify').href = intentFor(TRACK);
@@ -145,6 +144,12 @@
     ['spotify', 'followBig', 'webfallback'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('click', onTap);
+    });
+    // Navigation inside the in-app browser (Spotify's website, a login or error page): pagehide comes before
+    // the page turns hidden, so this keeps a page load from being counted as the app opening. Best effort:
+    // a send during pagehide can be lost.
+    window.addEventListener('pagehide', function () {
+      if (tapAt && !outcome && Date.now() - tapAt < 10000) { outcome = 'web'; ev('HandoffWeb', { ms: Date.now() - tapAt }); }
     });
     document.addEventListener('visibilitychange', function () {
       if (!tapAt) return;
